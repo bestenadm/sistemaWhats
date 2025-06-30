@@ -3,12 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Envio de WhatsApp</title>
     <link rel="stylesheet" href="main.css">
+    <title>Sistema de Envio de WhatsApp</title>
 </head>
 <body>
     <div class="container">
         <h1>Sistema de Envio de WhatsApp</h1>
+        
+        <!-- Seção de Importação de Contatos -->
+        <div class="import-section" style="margin-bottom: 30px; padding: 20px; background-color: #f8f9fa; border-radius: 8px;">
+            <h3 style="margin-top: 0; color: #128C7E;">📁 Importar Contatos</h3>
+            <div class="form-group">
+                <label class="file-label" for="contactsFile">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14,2 14,8 20,8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                        <polyline points="10,9 9,9 8,9"></polyline>
+                    </svg>
+                    Selecionar planilha (.xlsx, .csv)
+                </label>
+                <input type="file" id="contactsFile" class="file-input" accept=".xlsx,.xls,.csv">
+                <button type="button" id="importContactsBtn" class="btn" style="margin-left: 10px;">Importar</button>
+            </div>
+            <div id="importStatus" style="margin-top: 10px; font-size: 14px;"></div>
+            <div style="margin-top: 10px; font-size: 12px; color: #666;">
+                <strong>Formato esperado:</strong> Colunas: Nome, Telefone, Tipo (opcional: contato/grupo)
+            </div>
+        </div>
         
         <form id="whatsappForm">
             <div class="form-group">
@@ -69,5 +92,7 @@
     </div>
 
     <script src="main.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 </body>
 </html>

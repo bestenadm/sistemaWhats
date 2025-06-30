@@ -4,6 +4,9 @@ const multer = require('multer');
 const cors = require('cors');
 const { scheduledJobs, scheduleJob } = require('node-schedule');
 const axios = require('axios');
+const fs = require('fs');
+const XLSX = require('xlsx');
+const csv = require('csv-parser');
 require('dotenv').config();
 
 const app = express();
@@ -53,12 +56,143 @@ app.get('/api/groups', (req, res) => {
   res.json(db.groups);
 });
 
+// Importar contatos de planilha
+app.post('/api/import-contacts', upload.single('contactsFile'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nenhum arquivo enviado'
+      });
+    }
+
+    const filePath = req.file.path;
+    const fileExtension = req.file.originalname.split('.').pop().toLowerCase();
+
+    let importedData = [];
+
+    if (fileExtension === 'csv') {
+      importedData = await importFromCSV(filePath);
+    } else if (fileExtension === 'xlsx' || fileExtension === 'xls') {
+      importedData = await importFromExcel(filePath);
+    } else {
+      // Limpar arquivo
+      fs.unlinkSync(filePath);
+      return res.status(400).json({
+        success: false,
+        message: 'Formato de arquivo não suportado. Use .csv, .xlsx ou .xls'
+      });
+    }
+
+    // Processar dados importados
+    const result = processImportedContacts(importedData);
+
+    // Limpar arquivo temporário
+    fs.unlinkSync(filePath);
+
+    res.json({
+      success: true,
+      message: 'Contatos importados com sucesso',
+      data: result
+    });
+
+  } catch (error) {
+    console.error('Erro ao importar contatos:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao importar contatos',
+      error: error.message
+    });
+  }
+});
+
+// Função para importar de CSV
+function importFromCSV(filePath) {
+  return new Promise((resolve, reject) => {
+    const results = [];
+    fs.createReadStream(filePath)
+      .pipe(csv())
+      .on('data', (data) => results.push(data))
+      .on('end', () => resolve(results))
+      .on('error', reject);
+  });
+}
+
+// Função para importar de Excel
+function importFromExcel(filePath) {
+  try {
+    const workbook = XLSX.readFile(filePath);
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    return XLSX.utils.sheet_to_json(worksheet);
+  } catch (error) {
+    throw new Error('Erro ao ler arquivo Excel: ' + error.message);
+  }
+}
+
+// Processar contatos importados
+function processImportedContacts(data) {
+  const importedContacts = [];
+  const importedGroups = [];
+  const errors = [];
+
+  data.forEach((row, index) => {
+    // Normalizar nomes das colunas
+    const normalizedRow = {};
+    Object.keys(row).forEach(key => {
+      const normalizedKey = key.toLowerCase().trim();
+      normalizedRow[normalizedKey] = row[key];
+    });
+
+    // Buscar dados nas colunas
+    const name = normalizedRow.nome || normalizedRow.name || normalizedRow.contato || '';
+    const phone = normalizedRow.telefone || normalizedRow.phone || normalizedRow.numero || normalizedRow.whatsapp || '';
+    const type = (normalizedRow.tipo || normalizedRow.type || 'contato').toLowerCase();
+
+    if (!name || !phone) {
+      errors.push(`Linha ${index + 1}: Nome ou telefone em branco`);
+      return;
+    }
+
+    // Limpar número de telefone
+    const cleanPhone = phone.toString().replace(/\D/g, '');
+
+    if (cleanPhone.length < 10) {
+      errors.push(`Linha ${index + 1}: Número inválido: ${phone}`);
+      return;
+    }
+
+    const contact = {
+      id: 'imported_' + Date.now() + '_' + index,
+      name: name.toString().trim(),
+      number: cleanPhone,
+      imported: true,
+      importedAt: new Date()
+    };
+
+    if (type.includes('grupo') || type.includes('group')) {
+      importedGroups.push(contact);
+      db.groups.push(contact);
+    } else {
+      importedContacts.push(contact);
+      db.contacts.push(contact);
+    }
+  });
+
+  return {
+    contacts: importedContacts,
+    groups: importedGroups,
+    errors: errors,
+    total: importedContacts.length + importedGroups.length
+  };
+}
+
 // Enviar mensagem
 app.post('/api/send-message', upload.single('attachment'), async (req, res) => {
   try {
     const { message, recipients, scheduleTime } = req.body;
     const recipientsList = JSON.parse(recipients);
-    
+
     const newMessage = {
       id: Date.now().toString(),
       message,
@@ -68,9 +202,9 @@ app.post('/api/send-message', upload.single('attachment'), async (req, res) => {
       status: 'pending',
       createdAt: new Date()
     };
-    
+
     db.messages.push(newMessage);
-    
+
     if (scheduleTime) {
       // Agendar envio
       scheduleJob(newMessage.id, new Date(scheduleTime), async () => {
@@ -80,7 +214,7 @@ app.post('/api/send-message', upload.single('attachment'), async (req, res) => {
           db.messages[index].status = 'sent';
         }
       });
-      
+
       res.status(201).json({
         success: true,
         message: 'Mensagem agendada com sucesso',
@@ -88,13 +222,15 @@ app.post('/api/send-message', upload.single('attachment'), async (req, res) => {
       });
     } else {
       // Enviar imediatamente
-      await sendWhatsAppMessage(newMessage);
+      const results = await sendWhatsAppMessage(newMessage);
       newMessage.status = 'sent';
-      
+      newMessage.results = results;
+
       res.status(200).json({
         success: true,
         message: 'Mensagem enviada com sucesso',
-        data: newMessage
+        data: newMessage,
+        results: results
       });
     }
   } catch (error) {
@@ -115,7 +251,7 @@ app.get('/api/messages', (req, res) => {
 // Cancelar mensagem agendada
 app.delete('/api/messages/:id', (req, res) => {
   const { id } = req.params;
-  
+
   const index = db.messages.findIndex(msg => msg.id === id);
   if (index === -1) {
     return res.status(404).json({
@@ -123,15 +259,15 @@ app.delete('/api/messages/:id', (req, res) => {
       message: 'Mensagem não encontrada'
     });
   }
-  
+
   // Cancelar agendamento
   if (scheduledJobs[id]) {
     scheduledJobs[id].cancel();
   }
-  
+
   // Atualizar status
   db.messages[index].status = 'cancelled';
-  
+
   res.json({
     success: true,
     message: 'Agendamento cancelado com sucesso',
@@ -142,56 +278,112 @@ app.delete('/api/messages/:id', (req, res) => {
 // Função para enviar mensagem pelo WhatsApp Business API
 async function sendWhatsAppMessage(messageData) {
   try {
-    // Em um ambiente real, aqui usaríamos a API oficial do WhatsApp Business
-    // Exemplo de como seria com a API oficial:
-    
+    const results = [];
+
     for (const recipient of messageData.recipients) {
-      // Construir o payload da mensagem conforme documentação da API do WhatsApp
-      const payload = {
-        messaging_product: "whatsapp",
-        to: recipient.number,
-        type: "text",
-        text: { body: messageData.message }
-      };
-      
-      // Se houver anexo, precisamos primeiro fazer upload para o servidor do WhatsApp
-      // e depois enviar uma mensagem de mídia em vez de texto
+      let payload;
+      let mediaId = null;
+
+      // Se houver anexo, primeiro fazer upload da mídia
       if (messageData.attachment) {
-        // Este código seria adaptado conforme o tipo de mídia
-        // Aqui é apenas ilustrativo
-        
-        // 1. Upload da mídia para os servidores do WhatsApp
-        // const mediaUploadResponse = await axios.post(
-        //   `https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/media`,
-        //   mediaFormData,
-        //   { headers: { Authorization: `Bearer ${process.env.WHATSAPP_API_TOKEN}` } }
-        // );
-        
-        // 2. Enviar mensagem com mídia
-        // payload = {
-        //   messaging_product: "whatsapp",
-        //   to: recipient.number,
-        //   type: "image",
-        //   image: { id: mediaUploadResponse.data.id }
-        // };
+        try {
+          mediaId = await uploadMediaToWhatsApp(messageData.attachment);
+        } catch (error) {
+          console.error('Erro ao fazer upload da mídia:', error);
+          // Continuar sem anexo se o upload falhar
+        }
       }
-      
-      // Enviar a mensagem
-      // Em um cenário real, descomente o código abaixo:
-      
-      // const response = await axios.post(
-      //   `https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
-      //   payload,
-      //   { headers: { Authorization: `Bearer ${process.env.WHATSAPP_API_TOKEN}` } }
-      // );
-      
-      // Simular a resposta da API para desenvolvimento
-      console.log(`Mensagem enviada para ${recipient.number}: ${messageData.message}`);
+
+      // Construir o payload baseado no tipo de conteúdo
+      if (mediaId) {
+        // Determinar o tipo de mídia baseado na extensão do arquivo
+        const fileExtension = messageData.attachment.split('.').pop().toLowerCase();
+        let mediaType = 'document'; // padrão
+
+        if (['jpg', 'jpeg', 'png', 'gif'].includes(fileExtension)) {
+          mediaType = 'image';
+        } else if (['mp4', 'avi', 'mov'].includes(fileExtension)) {
+          mediaType = 'video';
+        } else if (['mp3', 'wav', 'ogg'].includes(fileExtension)) {
+          mediaType = 'audio';
+        }
+
+        payload = {
+          messaging_product: "whatsapp",
+          to: recipient.number,
+          type: mediaType,
+          [mediaType]: {
+            id: mediaId,
+            caption: messageData.message // Mensagem como legenda da mídia
+          }
+        };
+      } else {
+        // Mensagem apenas de texto
+        payload = {
+          messaging_product: "whatsapp",
+          to: recipient.number,
+          type: "text",
+          text: { body: messageData.message }
+        };
+      }
+
+      // Enviar a mensagem para a API do WhatsApp
+      const response = await axios.post(
+        `https://graph.facebook.com/${process.env.WHATSAPP_VERSION || 'v18.0'}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+        payload,
+        {
+          headers: {
+            'Authorization': `Bearer ${process.env.WHATSAPP_API_TOKEN}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      results.push({
+        recipient: recipient.number,
+        success: true,
+        messageId: response.data.messages[0].id,
+        response: response.data
+      });
+
+      console.log(`✅ Mensagem enviada para ${recipient.number} - ID: ${response.data.messages[0].id}`);
+
+      // Pequeno delay entre mensagens para evitar rate limiting
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
-    
-    return true;
+
+    return results;
   } catch (error) {
-    console.error('Erro ao enviar mensagem via WhatsApp API:', error);
+    console.error('❌ Erro ao enviar mensagem via WhatsApp API:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
+// Função para fazer upload de mídia para o WhatsApp
+async function uploadMediaToWhatsApp(filePath) {
+  try {
+    const fs = require('fs');
+    const FormData = require('form-data');
+
+    const form = new FormData();
+    form.append('file', fs.createReadStream(filePath));
+    form.append('messaging_product', 'whatsapp');
+
+    const response = await axios.post(
+      `https://graph.facebook.com/${process.env.WHATSAPP_VERSION || 'v18.0'}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/media`,
+      form,
+      {
+        headers: {
+          ...form.getHeaders(),
+          'Authorization': `Bearer ${process.env.WHATSAPP_API_TOKEN}`
+        }
+      }
+    );
+
+    console.log('✅ Upload de mídia realizado - ID:', response.data.id);
+    return response.data.id;
+  } catch (error) {
+    console.error('❌ Erro no upload de mídia:', error.response?.data || error.message);
     throw error;
   }
 }
