@@ -1,5 +1,12 @@
+// --- Configuração do Supabase ---
+// Insira suas credenciais do Supabase aqui.
+const SUPABASE_URL = 'COLOQUE_A_URL_DO_SEU_PROJETO_AQUI'; // Ex: https://xyz.supabase.co
+const SUPABASE_ANON_KEY = 'COLOQUE_SUA_CHAVE_ANON_AQUI'; // Ex: eyJhbGciOi...
+
+// Inicializa o cliente Supabase
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
 // Variáveis globais
-let supabase = null;
 let contacts = [];
 let groups = [];
 
@@ -9,65 +16,21 @@ const recipientSelect = document.getElementById('recipientSelect');
 const addRecipientBtn = document.getElementById('addRecipient');
 const selectedRecipients = document.getElementById('selectedRecipients');
 const attachmentInput = document.getElementById('attachment');
-const fileInfo = document.getElementById('fileInfo');
-const whatsappForm = document.getElementById('whatsappForm');
-const statusMessage = document.getElementById('statusMessage');
+const fileInfo = document.getElementById('fileInfo'); const whatsappForm = document.getElementById('whatsappForm'); const statusMessage = document.getElementById('statusMessage');
 const contactsFileInput = document.getElementById('contactsFile');
 const importContactsBtn = document.getElementById('importContactsBtn');
 const loadContactsBtn = document.getElementById('loadContactsBtn');
 const clearContactsBtn = document.getElementById('clearContactsBtn');
 const importStatus = document.getElementById('importStatus');
 
-// Conectar ao Supabase
-async function connectSupabase() {
-    const url = document.getElementById('supabaseUrl').value;
-    const key = document.getElementById('supabaseKey').value;
-
-    if (!url || !key) {
-        showConnectionStatus('Por favor, preencha a URL e a chave do Supabase.', 'error');
+// Carrega os contatos automaticamente quando a página é iniciada
+document.addEventListener('DOMContentLoaded', async () => {
+    if (SUPABASE_URL.includes('COLOQUE_A_URL') || SUPABASE_ANON_KEY.includes('COLOQUE_SUA_CHAVE')) {
+        showImportStatus('⚠️ Configure suas credenciais do Supabase no arquivo main.js primeiro!', 'error');
         return;
     }
-
-    try {
-        supabase = window.supabase.createClient(url, key);
-        showConnectionStatus('✅ Conectado ao Supabase com sucesso!', 'success');
-
-        // Carregar contatos existentes
-        await loadContactsFromSupabase();
-    } catch (error) {
-        showConnectionStatus(`❌ Erro ao conectar: ${error.message}`, 'error');
-    }
-}
-
-// Criar tabelas no Supabase
-function createTables() {
-    const sql = `
--- Tabela de contatos
-CREATE TABLE IF NOT EXISTS whatsapp_contacts (
-id SERIAL PRIMARY KEY,
-name TEXT NOT NULL,
-phone TEXT NOT NULL,
-type TEXT DEFAULT 'contato',
-created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- Tabela de grupos
-CREATE TABLE IF NOT EXISTS whatsapp_groups (
-id SERIAL PRIMARY KEY,
-name TEXT NOT NULL,
-group_id TEXT NOT NULL,
-created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- Índices para performance
-CREATE INDEX IF NOT EXISTS idx_contacts_phone ON whatsapp_contacts(phone);
-CREATE INDEX IF NOT EXISTS idx_groups_group_id ON whatsapp_groups(group_id);
-    `;
-
-    showConnectionStatus(`📋 SQL para criar as tabelas:\n\n${sql}\n\nExecute este SQL no painel do Supabase (SQL Editor).`, 'info');
-}
+    await loadContactsFromSupabase();
+});
 
 // Carregar contatos do Supabase
 async function loadContactsFromSupabase() {
@@ -77,7 +40,7 @@ async function loadContactsFromSupabase() {
     }
 
     try {
-        showImportStatus('Carregando contatos do Supabase...', '');
+        showImportStatus('🔄 Carregando contatos do Supabase...', 'info');
 
         // Carregar contatos
         const { data: contactsData, error: contactsError } = await supabase
