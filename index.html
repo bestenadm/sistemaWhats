@@ -29,6 +29,14 @@
                     <div class="stat-label">Total</div>
                 </div>
             </div>
+
+            <!-- Gerenciamento de Contatos -->
+            <div class="contacts-management" style="padding: 20px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 8px; background-color: #f9f9f9; text-align: center;">
+                <button type="button" id="loadContactsBtn" class="btn">🔄 Recarregar Contatos</button>
+                <button type="button" id="clearContactsBtn" class="btn btn-danger">🗑️ Limpar Contatos do Supabase</button>
+                <div id="importStatus" class="status-msg" style="margin-top: 10px;"></div>
+            </div>
+
             <form id="whatsappForm">
                 <div class="form-group">
                     <label for="recipientType">Tipo de Destinatário:</label>

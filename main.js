@@ -6,6 +6,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // Inicializa o cliente Supabase
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// --- Configuração da API ---
+const API_URL = 'http://localhost:3000'; // URL do seu servidor backend (api.js)
+
 // Variáveis globais
 let contacts = [];
 let groups = [];
@@ -147,8 +150,12 @@ function showStatus(message, type) {
 }
 
 // Event Listeners
-loadContactsBtn.addEventListener('click', loadContactsFromSupabase);
-clearContactsBtn.addEventListener('click', clearAllContacts);
+if (loadContactsBtn) {
+    loadContactsBtn.addEventListener('click', loadContactsFromSupabase);
+}
+if (clearContactsBtn) {
+    clearContactsBtn.addEventListener('click', clearAllContacts);
+}
 
 // Atualizar opções quando o tipo de destinatário muda
 recipientTypeSelect.addEventListener('change', updateRecipientOptions);
@@ -188,11 +195,11 @@ addRecipientBtn.addEventListener('click', function () {
 });
 
 // Enviar formulário
-whatsappForm.addEventListener('submit', function (e) {
+whatsappForm.addEventListener('submit', async function (e) {
     e.preventDefault();
 
     const recipients = Array.from(selectedRecipients.querySelectorAll('.recipient')).map(el => ({
-        id: el.dataset.id,
+        id: el.dataset.id, // O backend não usa o ID, mas é bom manter para consistência
         number: el.dataset.number
     }));
 
@@ -202,8 +209,8 @@ whatsappForm.addEventListener('submit', function (e) {
     }
 
     const message = document.getElementById('message').value.trim();
-    if (!message) {
-        showStatus('Por favor, digite uma mensagem.', 'error');
+    if (!message && attachmentInput.files.length === 0) {
+        showStatus('Por favor, digite uma mensagem ou anexe um arquivo.', 'error');
         return;
     }
 
@@ -220,13 +227,27 @@ whatsappForm.addEventListener('submit', function (e) {
         formData.append('scheduleTime', scheduleTime);
     }
 
-    showStatus('Enviando mensagem...', 'info');
+    showStatus('Enviando/Agendando mensagem...', 'info');
 
-    // Simulação de envio - aqui você integraria com a API real
-    setTimeout(() => {
-        showStatus('Mensagem enviada com sucesso!', 'success');
-        whatsappForm.reset();
-        selectedRecipients.innerHTML = '';
-        fileInfo.textContent = '';
-    }, 1500);
+    try {
+        const response = await fetch(`${API_URL}/api/send-message`, {
+            method: 'POST',
+            body: formData,
+            // Headers não são necessários para FormData, o browser os define automaticamente
+        });
+
+        const result = await response.json();
+
+        if (response.ok && result.success) {
+            showStatus(result.message, 'success');
+            whatsappForm.reset();
+            selectedRecipients.innerHTML = '';
+            fileInfo.textContent = '';
+        } else {
+            showStatus(`Erro: ${result.message || 'Ocorreu um erro no servidor.'}`, 'error');
+        }
+    } catch (error) {
+        console.error('Erro ao enviar formulário:', error);
+        showStatus('Erro de conexão com a API. Verifique se o servidor backend (api.js) está rodando.', 'error');
+    }
 });
