@@ -1,7 +1,7 @@
 // --- Configuração do Supabase ---
 // Insira suas credenciais do Supabase aqui.
-const SUPABASE_URL = 'https://xatnmvmhmfugdtaqoclm.supabase.co'; // <-- COLE SUA URL AQUI
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhhdG5tdm1obWZ1Z2R0YXFvY2xtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTEyODcyODksImV4cCI6MjA2Njg2MzI4OX0.EKg9-ZK5O1Qse8Nj0mH7kxWS73Ap278x8Ck8h5q2dRU'; // <-- COLE SUA CHAVE ANON AQUI
+const SUPABASE_URL = 'https://xatnmvmhmfugdtaqoclm.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhhdG5tdm1obWZ1Z2R0YXFvY2xtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTEyODcyODksImV4cCI6MjA2Njg2MzI4OX0.EKg9-ZK5O1Qse8Nj0mH7kxWS73Ap278x8Ck8h5q2dRU';
 
 // Inicializa o cliente Supabase
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -16,9 +16,9 @@ const recipientSelect = document.getElementById('recipientSelect');
 const addRecipientBtn = document.getElementById('addRecipient');
 const selectedRecipients = document.getElementById('selectedRecipients');
 const attachmentInput = document.getElementById('attachment');
-const fileInfo = document.getElementById('fileInfo'); const whatsappForm = document.getElementById('whatsappForm'); const statusMessage = document.getElementById('statusMessage');
-const contactsFileInput = document.getElementById('contactsFile');
-const importContactsBtn = document.getElementById('importContactsBtn');
+const fileInfo = document.getElementById('fileInfo');
+const whatsappForm = document.getElementById('whatsappForm');
+const statusMessage = document.getElementById('statusMessage');
 const loadContactsBtn = document.getElementById('loadContactsBtn');
 const clearContactsBtn = document.getElementById('clearContactsBtn');
 const importStatus = document.getElementById('importStatus');
@@ -81,48 +81,6 @@ async function loadContactsFromSupabase() {
     }
 }
 
-// Salvar contatos no Supabase
-async function saveContactsToSupabase(newContacts, newGroups) {
-    if (!supabase) {
-        throw new Error('Conecte-se ao Supabase primeiro');
-    }
-
-    try {
-        // Salvar contatos
-        if (newContacts.length > 0) {
-            const contactsToInsert = newContacts.map(contact => ({
-                name: contact.name,
-                phone: contact.number,
-                type: 'contato'
-            }));
-
-            const { error: contactsError } = await supabase
-                .from('whatsapp_contacts')
-                .insert(contactsToInsert);
-
-            if (contactsError) throw contactsError;
-        }
-
-        // Salvar grupos
-        if (newGroups.length > 0) {
-            const groupsToInsert = newGroups.map(group => ({
-                name: group.name,
-                group_id: group.number
-            }));
-
-            const { error: groupsError } = await supabase
-                .from('whatsapp_groups')
-                .insert(groupsToInsert);
-
-            if (groupsError) throw groupsError;
-        }
-
-        return true;
-    } catch (error) {
-        throw error;
-    }
-}
-
 // Limpar todos os contatos
 async function clearAllContacts() {
     if (!confirm('Tem certeza que deseja limpar todos os contatos e grupos?')) {
@@ -131,7 +89,7 @@ async function clearAllContacts() {
 
     try {
         if (supabase) {
-            showImportStatus('Limpando banco de dados...', '');
+            showImportStatus('🔄 Limpando banco de dados...', 'info');
 
             await supabase.from('whatsapp_contacts').delete().neq('id', 0);
             await supabase.from('whatsapp_groups').delete().neq('id', 0);
@@ -146,136 +104,6 @@ async function clearAllContacts() {
         showImportStatus('✅ Todos os contatos foram removidos!', 'success');
     } catch (error) {
         showImportStatus(`❌ Erro ao limpar: ${error.message}`, 'error');
-    }
-}
-
-// Importar contatos
-importContactsBtn.addEventListener('click', function () {
-    const file = contactsFileInput.files[0];
-    if (!file) {
-        showImportStatus('Por favor, selecione um arquivo.', 'error');
-        return;
-    }
-
-    showImportStatus('Importando contatos...', '');
-
-    const fileExtension = file.name.split('.').pop().toLowerCase();
-
-    if (fileExtension === 'csv') {
-        importFromCSV(file);
-    } else if (fileExtension === 'xlsx' || fileExtension === 'xls') {
-        importFromExcel(file);
-    } else {
-        showImportStatus('Formato não suportado. Use .csv, .xlsx ou .xls', 'error');
-    }
-});
-
-// Importar de CSV
-function importFromCSV(file) {
-    Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        complete: function (results) {
-            processImportedData(results.data);
-        },
-        error: function (error) {
-            showImportStatus('Erro ao ler CSV: ' + error.message, 'error');
-        }
-    });
-}
-
-// Importar de Excel
-function importFromExcel(file) {
-    const reader = new FileReader();
-    reader.onload = function (e) {
-        try {
-            const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
-            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-            const jsonData = XLSX.utils.sheet_to_json(firstSheet);
-            processImportedData(jsonData);
-        } catch (error) {
-            showImportStatus('Erro ao ler Excel: ' + error.message, 'error');
-        }
-    };
-    reader.readAsArrayBuffer(file);
-}
-
-// Processar dados importados
-async function processImportedData(data) {
-    if (!data || data.length === 0) {
-        showImportStatus('Arquivo vazio ou sem dados válidos.', 'error');
-        return;
-    }
-
-    let importedContacts = [];
-    let importedGroups = [];
-    let errors = [];
-
-    data.forEach((row, index) => {
-        // Normalizar nomes das colunas
-        const normalizedRow = {};
-        Object.keys(row).forEach(key => {
-            const normalizedKey = key.toLowerCase().trim();
-            normalizedRow[normalizedKey] = row[key];
-        });
-
-        const name = normalizedRow.nome || normalizedRow.name || normalizedRow.contato || '';
-        const phone = normalizedRow.telefone || normalizedRow.phone || normalizedRow.numero || normalizedRow.whatsapp || '';
-        const type = (normalizedRow.tipo || normalizedRow.type || 'contato').toLowerCase();
-
-        if (!name || !phone) {
-            errors.push(`Linha ${index + 1}: Nome ou telefone em branco`);
-            return;
-        }
-
-        const cleanPhone = phone.toString().replace(/\D/g, '');
-
-        if (cleanPhone.length < 10) {
-            errors.push(`Linha ${index + 1}: Número inválido: ${phone}`);
-            return;
-        }
-
-        const contact = {
-            id: 'imported_' + Date.now() + '_' + index,
-            name: name.toString().trim(),
-            number: cleanPhone
-        };
-
-        if (type.includes('grupo') || type.includes('group')) {
-            importedGroups.push(contact);
-        } else {
-            importedContacts.push(contact);
-        }
-    });
-
-    try {
-        // Salvar no Supabase se conectado
-        if (supabase) {
-            showImportStatus('Salvando no Supabase...', '');
-            await saveContactsToSupabase(importedContacts, importedGroups);
-        }
-
-        // Atualizar listas locais
-        contacts = [...contacts, ...importedContacts];
-        groups = [...groups, ...importedGroups];
-
-        updateRecipientOptions();
-        updateStats();
-
-        let message = `✅ Importação concluída: ${importedContacts.length} contatos, ${importedGroups.length} grupos`;
-        if (supabase) {
-            message += ' (salvo no Supabase)';
-        }
-        if (errors.length > 0) {
-            message += `\n⚠️ ${errors.length} erros encontrados`;
-        }
-
-        showImportStatus(message, 'success');
-        contactsFileInput.value = '';
-
-    } catch (error) {
-        showImportStatus(`❌ Erro ao salvar: ${error.message}`, 'error');
     }
 }
 
@@ -302,9 +130,28 @@ function updateRecipientOptions() {
     });
 }
 
+// Função para mostrar status de importação
+function showImportStatus(message, type) {
+    if (importStatus) {
+        importStatus.textContent = message;
+        importStatus.className = type;
+    }
+}
+
+// Função para mostrar status geral
+function showStatus(message, type) {
+    if (statusMessage) {
+        statusMessage.textContent = message;
+        statusMessage.className = type;
+    }
+}
+
 // Event Listeners
 loadContactsBtn.addEventListener('click', loadContactsFromSupabase);
 clearContactsBtn.addEventListener('click', clearAllContacts);
+
+// Atualizar opções quando o tipo de destinatário muda
+recipientTypeSelect.addEventListener('change', updateRecipientOptions);
 
 // Mostrar informações do arquivo anexado
 attachmentInput.addEventListener('change', function () {
@@ -373,8 +220,9 @@ whatsappForm.addEventListener('submit', function (e) {
         formData.append('scheduleTime', scheduleTime);
     }
 
-    showStatus('Enviando mensagem...', '');
+    showStatus('Enviando mensagem...', 'info');
 
+    // Simulação de envio - aqui você integraria com a API real
     setTimeout(() => {
         showStatus('Mensagem enviada com sucesso!', 'success');
         whatsappForm.reset();
